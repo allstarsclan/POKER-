@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0e241b">
+    <title>Poker Tongkrongan</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Poker Tongkrongan">
+          <span class="brand-mark">♠</span>
+          <span>POKER <b>TONGKRONGAN</b></span>
+        </a>
+        <span class="online-status"><i></i> ONLINE</span>
+      </header>
+
+      <section id="home-screen" class="screen home-screen">
+        <div class="hero-copy">
+          <p class="eyebrow">KARTU DIBAGI, TEMAN DICARI</p>
+          <h1>Meja tongkrongan,<br><em>kapan aja.</em></h1>
+          <p class="intro">Main kartu bareng teman. Bikin room sendiri atau langsung cari meja yang lagi nunggu pemain.</p>
+        </div>
+        <div class="lobby-card">
+          <label for="player-name">Nama panggilan</label>
+          <input id="player-name" maxlength="18" placeholder="Contoh: Budi" autocomplete="nickname">
+          <button id="find-public" class="button button-primary">Cari meja publik <span>→</span></button>
+          <div class="divider"><span>atau bikin meja sendiri</span></div>
+          <button id="create-public" class="button button-secondary">Buat room publik</button>
+          <button id="create-private" class="button button-quiet">Buat room privat <span>＋</span></button>
+          <div class="join-row">
+            <input id="room-code" maxlength="6" placeholder="KODE ROOM" aria-label="Kode room">
+            <button id="join-room" class="button button-dark">Gabung</button>
+          </div>
+        </div>
+        <div class="how-to">
+          <span class="how-icon">♣</span>
+          <div><b>Remi ala tongkrongan</b><p>Single, pair, triss, polo, bomb, dan seri minimal 3 kartu se-daun. Main 4 orang — ajak teman atau isi kursi dengan bot.</p></div>
+        </div>
+      </section>
+
+      <section id="room-screen" class="screen room-screen" hidden>
+        <button id="leave-room" class="back-button">← Keluar ke lobby</button>
+        <div class="room-heading">
+          <p class="eyebrow">MEJA PERMAINAN</p>
+          <h1>Room <span id="room-code-title"></span></h1>
+          <p id="room-privacy" class="muted"></p>
+        </div>
+        <div class="room-card">
+          <div class="room-card-heading"><div><h2>Pemain</h2><p>Butuh 4 pemain untuk mulai</p></div><span id="seat-count" class="seat-count"></span></div>
+          <div id="player-list" class="player-list"></div>
+          <div class="room-actions">
+            <button id="add-bots" class="button button-secondary">Isi kursi dengan bot</button>
+            <button id="remove-bots" class="button button-quiet">Hapus bot</button>
+            <button id="start-game" class="button button-primary">Mulai main →</button>
+          </div>
+          <p id="host-note" class="host-note"></p>
+        </div>
+        <p class="room-tip">Bagikan kode room ke temanmu supaya mereka bisa ikut main.</p>
+      </section>
+
+      <section id="game-screen" class="screen game-screen" hidden>
+        <div class="game-topbar">
+          <button id="leave-game" class="back-button">← Keluar</button>
+          <div><span class="game-label">ROOM</span><strong id="game-room-code"></strong></div>
+          <span id="turn-pill" class="turn-pill"></span>
+        </div>
+        <div class="table">
+          <div id="opponents" class="opponents"></div>
+          <div class="table-center">
+            <div class="table-logo">♠</div>
+            <p id="table-message">Menunggu permainan...</p>
+            <div id="played-cards" class="played-cards"></div>
+            <span id="combo-label" class="combo-label"></span>
+          </div>
+          <div id="result-banner" class="result-banner" hidden></div>
+        </div>
+        <div class="hand-panel">
+          <div class="hand-heading"><div><span class="game-label">KARTU KAMU</span><strong id="hand-count"></strong></div><span id="selection-hint">Pilih kartu untuk dimainkan</span></div>
+          <div id="hand" class="hand"></div>
+          <div class="game-actions">
+            <button id="pass-turn" class="button button-secondary">Pass</button>
+            <button id="play-cards" class="button button-primary">Mainkan kartu →</button>
+          </div>
+        </div>
+      </section>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <script src="/client.js"></script>
+  </body>
+</html>
