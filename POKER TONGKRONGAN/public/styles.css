@@ -2,13 +2,13 @@
 
 :root {
   color-scheme: dark;
-  --ink: #f5f3e9;
-  --muted: #9da99e;
-  --green: #0e241b;
-  --panel: #183629;
-  --line: rgba(235, 239, 218, .12);
-  --lime: #d7ed72;
-  --red: #e78378;
+  --ink: #fff8e9;
+  --muted: #b6a99a;
+  --green: #0d1017;
+  --panel: #1b2029;
+  --line: rgba(230, 195, 126, .18);
+  --lime: #e8c27a;
+  --red: #f07878;
 }
 
 * { box-sizing: border-box; }
@@ -18,8 +18,9 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(ellipse at 50% 32%, rgba(49, 91, 65, .34), transparent 49%),
-    var(--green);
+    radial-gradient(ellipse at 52% 25%, rgba(111, 32, 54, .23), transparent 38%),
+    radial-gradient(ellipse at 88% 80%, rgba(113, 82, 35, .13), transparent 38%),
+    linear-gradient(145deg, #10131b 0%, #11141b 50%, #18151a 100%);
   font-family: 'DM Sans', sans-serif;
 }
 button, input { font: inherit; }
@@ -42,6 +43,14 @@ h1 em { color: var(--lime); font-style: normal; }
 .intro { max-width: 390px; color: #bdc9bd; font-size: 15px; line-height: 1.7; }
 .lobby-card, .room-card { padding: 26px; border: 1px solid var(--line); border-radius: 16px; background: rgba(23, 50, 38, .82); box-shadow: 0 18px 65px rgba(0,0,0,.13); }
 .lobby-card label { display: block; margin: 0 0 8px; color: #c3cdc2; font-size: 12px; }
+.mode-picker { display: grid; gap: 8px; margin: 0 0 20px; padding: 0; border: 0; }
+.mode-picker legend { margin-bottom: 9px; color: #c3cdc2; font-size: 12px; }
+.mode-choice { display: flex; width: 100%; align-items: center; gap: 11px; padding: 11px; color: var(--ink); text-align: left; border: 1px solid var(--line); border-radius: 9px; background: rgba(0,0,0,.14); }
+.mode-choice.selected { border-color: rgba(215,237,114,.72); background: rgba(215,237,114,.08); }
+.mode-icon { display: grid; width: 34px; height: 34px; flex: none; place-items: center; color: var(--lime); border-radius: 8px; background: rgba(215,237,114,.1); font-size: 17px; }
+.mode-choice b, .mode-choice small { display: block; }
+.mode-choice b { font-size: 12px; }
+.mode-choice small { margin-top: 4px; color: var(--muted); font-size: 10px; }
 input { width: 100%; min-width: 0; padding: 12px 13px; color: var(--ink); border: 1px solid rgba(235,239,218,.15); border-radius: 8px; outline: none; background: rgba(4,17,11,.38); }
 input:focus { border-color: var(--lime); }
 input::placeholder { color: #829287; }
@@ -67,6 +76,7 @@ input::placeholder { color: #829287; }
 .room-heading { margin: 35px 0 24px; }
 .room-heading h1 { margin: 8px 0; font-size: 40px; }
 .room-heading h1 span { color: var(--lime); letter-spacing: .06em; }
+.mode-badge { display: inline-flex; margin: 0 0 10px; padding: 7px 10px; color: var(--lime); border: 1px solid rgba(215,237,114,.23); border-radius: 20px; font-size: 10px; }
 .muted, .room-card-heading p { color: var(--muted); font-size: 12px; }
 .room-card-heading { display: flex; align-items: center; justify-content: space-between; }
 .room-card-heading h2 { margin: 0 0 5px; font: 600 18px 'Space Grotesk', sans-serif; }
@@ -90,14 +100,19 @@ input::placeholder { color: #829287; }
 .table-center { display: flex; max-width: 90%; flex-direction: column; align-items: center; justify-content: center; min-height: 160px; text-align: center; }
 .table-logo { color: rgba(215,237,114,.18); font-size: 34px; }
 .table-center p { margin: 6px 0 14px; color: #b8c5b8; font-size: 12px; }
-.played-cards { display: flex; min-height: 88px; align-items: center; justify-content: center; gap: 5px; }
+.played-cards { display: flex; min-height: 88px; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
 .mini-card { display: flex; width: 49px; height: 69px; align-items: center; justify-content: center; border-radius: 7px; color: #203529; background: #f4f1e5; box-shadow: 0 3px 8px rgba(0,0,0,.25); font: 700 16px 'Space Grotesk', sans-serif; }
 .mini-card.red, .playing-card.red { color: #c7443b; }
 .combo-label { min-height: 17px; color: var(--lime); font-size: 10px; text-transform: uppercase; letter-spacing: .12em; }
+.holdem-table-info { display: flex; gap: 16px; margin-top: 8px; color: #bac8ba; font-size: 10px; letter-spacing: .09em; }
+.holdem-table-info b { margin-left: 4px; color: var(--lime); font-size: 13px; }
 .opponents { position: absolute; inset: 14px 5%; display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none; }
 .opponent { display: flex; min-width: 80px; flex-direction: column; align-items: center; gap: 6px; color: #d2dbd0; font-size: 10px; }
 .opponent.current { color: var(--lime); }
+.opponent.folded { opacity: .42; }
 .opponent-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opponent-hole { display: flex; gap: 3px; }
+.opponent-mini-card { width: 31px; height: 44px; border-radius: 5px; font-size: 11px; }
 .card-back-row { display: flex; }
 .card-back { width: 15px; height: 22px; margin-left: -6px; border: 1px solid #6f8e71; border-radius: 3px; background: repeating-linear-gradient(45deg, #274b36, #274b36 2px, #315c40 2px, #315c40 4px); }
 .result-banner { position: absolute; z-index: 1; inset: auto 0 15px; color: var(--lime); text-align: center; font: 600 18px 'Space Grotesk', sans-serif; }
@@ -113,8 +128,82 @@ input::placeholder { color: #829287; }
 .playing-card small { margin-top: 1px; font-size: 15px; }
 .game-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .game-actions .button { min-width: 115px; }
+.holdem-actions { align-items: flex-end; flex-wrap: wrap; }
+.raise-control { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
+.raise-control input { width: 125px; padding: 10px; }
+.button:disabled { cursor: not-allowed; opacity: .42; transform: none; }
 .toast { position: fixed; z-index: 5; right: 20px; bottom: 20px; max-width: min(360px, calc(100% - 40px)); padding: 12px 16px; color: var(--ink); border: 1px solid var(--line); border-radius: 9px; background: #294536; box-shadow: 0 10px 30px rgba(0,0,0,.3); font-size: 12px; opacity: 0; pointer-events: none; transform: translateY(8px); transition: .2s; }
 .toast.visible { opacity: 1; transform: translateY(0); }
+
+.topbar { border-bottom-color: rgba(232,194,122,.2); }
+.brand { letter-spacing: .15em; }
+.brand-mark { color: #241a13; background: linear-gradient(145deg, #f8dfa2, #c49245); box-shadow: 0 0 22px rgba(232,194,122,.18); }
+.online-status i { background: #64dca5; box-shadow: 0 0 12px rgba(100,220,165,.65); }
+.eyebrow, .game-label { color: #e8c27a; }
+h1 em { color: #f3cf86; text-shadow: 0 0 34px rgba(232,194,122,.16); }
+.lobby-card, .room-card, .hand-panel {
+  border-color: rgba(232,194,122,.2);
+  background: linear-gradient(145deg, rgba(32,34,41,.96), rgba(22,25,32,.95));
+  box-shadow: 0 22px 65px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.035);
+}
+.mode-choice { transition: border-color .18s, background .18s, transform .18s; }
+.mode-choice:hover { transform: translateY(-1px); border-color: rgba(232,194,122,.44); }
+.mode-choice.selected { border-color: rgba(232,194,122,.8); background: linear-gradient(105deg, rgba(232,194,122,.12), rgba(119,49,60,.11)); box-shadow: inset 3px 0 #e8c27a; }
+.mode-icon, .how-icon { color: #f2cf89; background: rgba(232,194,122,.11); }
+input { border-color: rgba(232,194,122,.18); background: rgba(8,10,15,.58); }
+input:focus { border-color: #e8c27a; box-shadow: 0 0 0 3px rgba(232,194,122,.1); }
+.button-primary { color: #21180d; background: linear-gradient(135deg, #f3d795, #d5a954); box-shadow: 0 6px 20px rgba(196,146,69,.15); }
+.button-primary:hover { background: linear-gradient(135deg, #ffe8ad, #e1bb6b); }
+.button-secondary { border-color: rgba(232,194,122,.24); background: rgba(255,255,255,.045); }
+.button-secondary:hover, .button-quiet:hover { background: rgba(232,194,122,.1); }
+.button-dark { color: #fff4dc; border: 1px solid rgba(232,194,122,.18); background: #2a2523; }
+.table {
+  min-height: 420px;
+  border: 2px solid rgba(203,157,83,.78);
+  outline: 1px solid rgba(245,218,156,.2);
+  outline-offset: 4px;
+  background:
+    radial-gradient(ellipse at 50% 43%, rgba(38,112,78,.95), transparent 71%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.012) 0 1px, transparent 1px 5px),
+    radial-gradient(ellipse at center, #15583f 0%, #10432f 58%, #0c3025 100%);
+  box-shadow: inset 0 0 60px rgba(0,0,0,.36), 0 18px 50px rgba(0,0,0,.3), 0 0 28px rgba(203,157,83,.08);
+}
+.table::before { position: absolute; inset: 12px; border: 1px solid rgba(235,202,137,.16); border-radius: inherit; content: ''; pointer-events: none; }
+.table-logo { color: rgba(239,205,137,.2); text-shadow: 0 0 30px rgba(232,194,122,.17); }
+.mini-card, .playing-card {
+  color: #25211d;
+  border-color: #fff9e9;
+  background: linear-gradient(145deg, #fffdf6, #e9e2d2);
+  box-shadow: 0 8px 18px rgba(0,0,0,.3), inset 0 1px rgba(255,255,255,.8);
+}
+.playing-card { width: 59px; height: 88px; border-radius: 9px; }
+.playing-card.selected { border-color: #e8c27a; box-shadow: 0 0 0 2px #e8c27a, 0 13px 22px rgba(0,0,0,.38); }
+.playing-card:disabled { opacity: 1; }
+.playing-card:disabled:hover { transform: none; }
+.card-back { height: 25px; border-color: rgba(239,205,137,.85); background: repeating-linear-gradient(45deg, #522734, #522734 3px, #713342 3px, #713342 6px); }
+.turn-pill { color: #f2cf89; border-color: rgba(232,194,122,.4); background: rgba(232,194,122,.07); }
+.opponent.current .opponent-name { text-shadow: 0 0 14px rgba(232,194,122,.5); }
+.mode-badge { color: #f2cf89; border-color: rgba(232,194,122,.32); background: rgba(232,194,122,.06); }
+.holdem-table-info b { color: #f3d28f; }
+.result-banner { color: #f5d894; text-shadow: 0 0 24px rgba(232,194,122,.46); }
+.toast { border-color: rgba(232,194,122,.26); background: #28252a; }
+.online-status { color: #c4b8aa; }
+.host-note, .room-tip { color: #b6a99a; }
+.player-row { border-color: rgba(232,194,122,.13); background: rgba(8,10,15,.28); }
+.empty-seat { color: #938778; }
+.button:focus-visible, .mode-choice:focus-visible, .back-button:focus-visible {
+  outline: 2px solid #f3d28f;
+  outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .table { min-height: 345px; outline-offset: 2px; }
+  .playing-card { width: 53px; height: 80px; flex-basis: 53px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
 
 @media (max-width: 700px) {
   .app-shell { width: min(100% - 28px, 520px); }

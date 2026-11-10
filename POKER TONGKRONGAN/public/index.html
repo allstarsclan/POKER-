@@ -21,9 +21,18 @@
         <div class="hero-copy">
           <p class="eyebrow">KARTU DIBAGI, TEMAN DICARI</p>
           <h1>Meja tongkrongan,<br><em>kapan aja.</em></h1>
-          <p class="intro">Main kartu bareng teman. Bikin room sendiri atau langsung cari meja yang lagi nunggu pemain.</p>
+          <p id="mode-description" class="intro">Poker Ronda dengan aturan kartu tongkrongan, termasuk bomb dan seri.</p>
         </div>
         <div class="lobby-card">
+          <fieldset class="mode-picker">
+            <legend>Pilih mode</legend>
+            <button type="button" class="mode-choice selected" data-mode="ronda" aria-pressed="true">
+              <span class="mode-icon">♠</span><span><b>Poker Ronda</b><small>Single, pair, triss, polo, bomb, seri</small></span>
+            </button>
+            <button type="button" class="mode-choice" data-mode="holdem" aria-pressed="false">
+              <span class="mode-icon">♥</span><span><b>Texas Hold’em</b><small>2 kartu tangan, 5 kartu meja, chip virtual</small></span>
+            </button>
+          </fieldset>
           <label for="player-name">Nama panggilan</label>
           <input id="player-name" maxlength="18" placeholder="Contoh: Budi" autocomplete="nickname">
           <button id="find-public" class="button button-primary">Cari meja publik <span>→</span></button>
@@ -37,7 +46,7 @@
         </div>
         <div class="how-to">
           <span class="how-icon">♣</span>
-          <div><b>Remi ala tongkrongan</b><p>Single, pair, triss, polo, sampai bomb. Main 4 orang — ajak teman atau isi kursi dengan bot.</p></div>
+          <div><b>Remi ala tongkrongan</b><p>Single, pair, triss, polo, bomb, dan seri minimal 3 kartu se-daun. Main 4 orang — ajak teman atau isi kursi dengan bot.</p></div>
         </div>
       </section>
 
@@ -46,6 +55,7 @@
         <div class="room-heading">
           <p class="eyebrow">MEJA PERMAINAN</p>
           <h1>Room <span id="room-code-title"></span></h1>
+          <p id="room-mode" class="mode-badge"></p>
           <p id="room-privacy" class="muted"></p>
         </div>
         <div class="room-card">
@@ -74,15 +84,25 @@
             <p id="table-message">Menunggu permainan...</p>
             <div id="played-cards" class="played-cards"></div>
             <span id="combo-label" class="combo-label"></span>
+            <div id="holdem-table-info" class="holdem-table-info" hidden>
+              <span>POT <b id="holdem-pot">0</b></span>
+              <span id="holdem-stage"></span>
+            </div>
           </div>
           <div id="result-banner" class="result-banner" hidden></div>
         </div>
         <div class="hand-panel">
           <div class="hand-heading"><div><span class="game-label">KARTU KAMU</span><strong id="hand-count"></strong></div><span id="selection-hint">Pilih kartu untuk dimainkan</span></div>
           <div id="hand" class="hand"></div>
-          <div class="game-actions">
+          <div id="ronda-actions" class="game-actions">
             <button id="pass-turn" class="button button-secondary">Pass</button>
             <button id="play-cards" class="button button-primary">Mainkan kartu →</button>
+          </div>
+          <div id="holdem-actions" class="game-actions holdem-actions" hidden>
+            <button id="holdem-fold" class="button button-secondary">Fold</button>
+            <button id="holdem-check-call" class="button button-secondary">Check</button>
+            <label class="raise-control"><span>Raise to</span><input id="holdem-raise-amount" type="number" min="1" step="100" inputmode="numeric"></label>
+            <button id="holdem-raise" class="button button-primary">Raise →</button>
           </div>
         </div>
       </section>

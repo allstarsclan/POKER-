@@ -2,6 +2,8 @@
 
 Aplikasi web multiplayer untuk permainan kartu tongkrongan 4 pemain.
 
+Tersedia dua mode: **Poker Ronda** (kombinasi buang kartu dan aturan bomb/seri tongkrongan) dan **Texas Hold’em** (dua kartu hole, lima community cards, blind, fold/check/call/raise, dan showdown). Texas Hold’em memakai chip virtual, bukan uang sungguhan: setiap pemain mulai dengan 100.000 chip, small blind 1.000, big blind 2.000. All-in dan side pot belum didukung.
+
 ## Deploy ke Cloudflare Workers
 
 Game memakai Cloudflare Workers untuk website, Durable Objects untuk room dan state game, serta WebSocket bawaan browser untuk multiplayer.
@@ -21,8 +23,9 @@ Untuk menjalankan lokal, pasang Node.js 18 atau lebih baru, jalankan `npm instal
 ## Aturan permainan
 
 - Satu game berisi empat pemain; host dapat mengisi kursi kosong dengan bot.
-- Kartu dibagikan rata dari satu deck. Pemegang 3♠ membuka permainan pertama dan kombinasi pembuka harus membawa 3♠.
-- Kombinasi: single, pair, triss, polo (full house), dan bomb (empat kartu dengan angka sama).
+- Kartu dibagikan rata dari satu deck. Di awal permainan, semua kartu angka 3 dibuka dan dibuang. Pemegang 3♠ mendapat giliran pertama dan membuka permainan dengan kartu lain.
+- Kombinasi: single, pair, triss, polo (full house), bomb (empat kartu dengan angka sama), dan seri minimal tiga kartu berurutan dengan daun yang sama.
+- Seri yang dilawan harus memiliki jumlah kartu yang sama; seri dengan kartu tertinggi lebih besar menang. Urutan normal seri adalah 3 sampai A (2 tidak ikut). Jika bomb dimainkan sebelum ada kartu 2 yang dimainkan, 2 dapat menjadi kartu terendah tepat sebelum 3 dalam seri.
 - Pemain berikutnya harus mengalahkan kombinasi di meja dengan kombinasi sejenis. Bomb dapat mengalahkan single kartu 2; pemilik kartu 2 langsung kalah dan pemain yang mengeluarkan bomb menang.
 - Pemain juga menang jika berhasil menghabiskan semua kartu lebih dulu. Pemain yang pass tidak dapat ikut lagi sampai kombinasi meja dibuka ulang.
 

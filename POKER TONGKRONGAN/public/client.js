@@ -8,8 +8,23 @@ const nameInput = document.getElementById("player-name");
 const selectedCards = new Set();
 let currentRoom = null;
 let toastTimer;
+let selectedMode = "ronda";
 
 nameInput.value = localStorage.getItem("poker-name") || "";
+
+for (const button of document.querySelectorAll(".mode-choice")) {
+  button.addEventListener("click", () => {
+    selectedMode = button.dataset.mode;
+    for (const choice of document.querySelectorAll(".mode-choice")) {
+      const active = choice === button;
+      choice.classList.toggle("selected", active);
+      choice.setAttribute("aria-pressed", String(active));
+    }
+    document.getElementById("mode-description").textContent = selectedMode === "holdem"
+      ? "Texas Hold’em pakai 100.000 chip virtual per pemain, blind 1.000 / 2.000."
+      : "Poker Ronda dengan aturan kartu tongkrongan, termasuk bomb dan seri.";
+  });
+}
 
 function showScreen(name) {
   for (const [key, element] of Object.entries(screens)) element.hidden = key !== name;
@@ -31,9 +46,9 @@ function emitWithName(event, extra = {}) {
   if (name) socket.emit(event, { ...extra, name });
 }
 
-document.getElementById("find-public").addEventListener("click", () => emitWithName("joinPublic"));
-document.getElementById("create-public").addEventListener("click", () => emitWithName("createRoom", { privateRoom: false }));
-document.getElementById("create-private").addEventListener("click", () => emitWithName("createRoom", { privateRoom: true }));
+document.getElementById("find-public").addEventListener("click", () => emitWithName("joinPublic", { mode: selectedMode }));
+document.getElementById("create-public").addEventListener("click", () => emitWithName("createRoom", { privateRoom: false, mode: selectedMode }));
+document.getElementById("create-private").addEventListener("click", () => emitWithName("createRoom", { privateRoom: true, mode: selectedMode }));
 document.getElementById("join-room").addEventListener("click", () => {
   const code = document.getElementById("room-code").value.trim().toUpperCase();
   if (!code) return showToast("Masukkan kode room dulu.");
@@ -88,6 +103,15 @@ document.getElementById("play-cards").addEventListener("click", () => {
   socket.emit("playCards", { cards: [...selectedCards] });
 });
 document.getElementById("pass-turn").addEventListener("click", () => socket.emit("passTurn"));
+document.getElementById("holdem-fold").addEventListener("click", () =>
+  socket.emit("holdemAction", { action: "fold" }));
+document.getElementById("holdem-check-call").addEventListener("click", () =>
+  socket.emit("holdemAction", { action: "checkCall" }));
+document.getElementById("holdem-raise").addEventListener("click", () =>
+  socket.emit("holdemAction", {
+    action: "raise",
+    amount: Number(document.getElementById("holdem-raise-amount").value),
+  }));
 
 function leaveRoom() {
   socket.emit("leaveRoom");
@@ -120,6 +144,9 @@ socket.on("lobby", (rooms) => {
 
 function renderRoom(room) {
   document.getElementById("room-code-title").textContent = room.code;
+  document.getElementById("room-mode").textContent = room.mode === "holdem"
+    ? "Texas Hold’em · chip virtual 100.000 · blind 1.000 / 2.000"
+    : "Poker Ronda";
   document.getElementById("room-privacy").textContent = room.privateRoom
     ? "Privat · hanya teman dengan kode yang bisa bergabung"
     : "Publik · pemain lain bisa bergabung";
@@ -166,48 +193,82 @@ function cardLabel(card) {
 
 function renderGame(room) {
   const game = room.game;
+  const holdem = game.mode === "holdem";
   document.getElementById("game-room-code").textContent = room.code;
   const me = room.players.find((player) => player.id === socket.id);
+  const myState = room.playerStates?.find((player) => player.id === socket.id);
   const current = room.players.find((player) => player.id === game.turnId);
   document.getElementById("turn-pill").textContent = game.finished
     ? "GAME SELESAI"
     : current?.id === socket.id ? "GILIRAN KAMU" : `GILIRAN ${current?.name || "..."}`;
-  document.getElementById("hand-count").textContent = `${me?.hand.length || 0} kartu`;
+  document.getElementById("hand-count").textContent = holdem
+    ? `${me?.hand.length || 0} kartu hole · ${(myState?.stack || 0).toLocaleString("id-ID")} chip`
+    : `${me?.hand.length || 0} kartu`;
   document.getElementById("table-message").textContent = game.finished
     ? "Permainan selesai."
-    : game.trick ? `${room.players.find((player) => player.id === game.trick.playerId)?.name || "Pemain"} mengeluarkan kartu`
-      : game.opening ? "Pembuka wajib membawa 3♠" : "Meja kosong · giliran buka kombinasi";
+    : holdem ? ({ preflop: "Pre-flop · pilih aksi", flop: "Flop · pilih aksi", turn: "Turn · pilih aksi", river: "River · pilih aksi", showdown: "Showdown" })[game.stage]
+      : game.trick ? `${room.players.find((player) => player.id === game.trick.playerId)?.name || "Pemain"} mengeluarkan kartu`
+      : game.openingCards?.length ? "Semua kartu 3 dibuang. Pemegang 3♠ mulai."
+        : "Meja kosong · giliran buka kombinasi";
 
   const tableCards = document.getElementById("played-cards");
   tableCards.replaceChildren();
-  for (const card of game.trick?.cards || []) {
+  const visibleCards = holdem ? game.board || [] : game.trick?.cards || game.openingCards || [];
+  for (const card of visibleCards) {
     const label = cardLabel(card);
     const element = document.createElement("div");
     element.className = `mini-card${label.red ? " red" : ""}`;
     element.textContent = `${label.rank}${label.suit}`;
     tableCards.append(element);
   }
+  const comboNames = { single: "single", pair: "pair", triple: "triss", polo: "polo", bomb: "bomb", straight: "seri" };
+  document.getElementById("combo-label").textContent = holdem
+    ? game.winningHand || (game.board?.length ? `${game.board.length} kartu community` : "Menunggu flop")
+    : game.trick
+    ? comboNames[game.trick.type]
+    : game.openingCards?.length ? "kartu 3 dibuang"
+      : game.twoLowInStraight ? "seri bisa diawali 2" : "";
+  document.getElementById("holdem-table-info").hidden = !holdem;
+  document.getElementById("holdem-pot").textContent =
+    (game.finished ? game.lastPot || 0 : game.pot || 0).toLocaleString("id-ID");
+  document.getElementById("holdem-stage").textContent = holdem
+    ? String(game.stage || "").toUpperCase() : "";
 
   const opponents = document.getElementById("opponents");
   opponents.replaceChildren();
   const others = room.players.filter((player) => player.id !== socket.id);
   for (const player of others) {
+    const playerState = room.playerStates?.find((state) => state.id === player.id);
     const seat = document.createElement("div");
     seat.className = `opponent${player.id === game.turnId ? " current" : ""}`;
     const name = document.createElement("span");
     name.className = "opponent-name";
     name.textContent = player.name;
     const backs = document.createElement("span");
-    backs.className = "card-back-row";
-    const count = Math.min(player.cardCount, 8);
-    for (let i = 0; i < count; i += 1) {
-      const back = document.createElement("i");
-      back.className = "card-back";
-      backs.append(back);
+    if (holdem && game.finished && !playerState?.folded && player.hand.length) {
+      backs.className = "opponent-hole";
+      for (const card of player.hand) {
+        const label = cardLabel(card);
+        const face = document.createElement("span");
+        face.className = `mini-card opponent-mini-card${label.red ? " red" : ""}`;
+        face.textContent = `${label.rank}${label.suit}`;
+        backs.append(face);
+      }
+    } else {
+      backs.className = "card-back-row";
+      const count = Math.min(holdem ? (playerState?.folded ? 0 : 2) : player.cardCount, 8);
+      for (let i = 0; i < count; i += 1) {
+        const back = document.createElement("i");
+        back.className = "card-back";
+        backs.append(back);
+      }
     }
     const cardCount = document.createElement("small");
-    cardCount.textContent = `${player.cardCount} kartu`;
+    cardCount.textContent = holdem
+      ? playerState?.folded ? "fold" : `${(playerState?.stack || 0).toLocaleString("id-ID")} chip · bet ${(playerState?.roundBet || 0).toLocaleString("id-ID")}`
+      : `${player.cardCount} kartu`;
     seat.append(name, backs, cardCount);
+    if (playerState?.folded) seat.classList.add("folded");
     opponents.append(seat);
   }
 
@@ -216,14 +277,34 @@ function renderGame(room) {
   if (game.finished) {
     const winner = room.players.find((player) => player.id === game.winnerId);
     const loser = room.players.find((player) => player.id === game.loserId);
-    result.textContent = loser
-      ? `${winner?.name || "Pemain"} nge-bomb! ${loser?.name || "Pemain"} kalah.`
-      : `${winner?.name || "Pemain"} menang!`;
+    result.textContent = holdem
+      ? `${(game.winnerIds || [game.winnerId]).map((id) => room.players.find((player) => player.id === id)?.name || "Pemain").join(" & ")} menang · ${game.winningHand || "pot"}`
+      : loser
+        ? `${winner?.name || "Pemain"} nge-bomb! ${loser?.name || "Pemain"} kalah.`
+        : `${winner?.name || "Pemain"} menang!`;
   }
 
-  renderHand(me?.hand || [], game.finished || game.turnId !== socket.id);
+  renderHand(me?.hand || [], game.finished || game.turnId !== socket.id || holdem);
+  document.getElementById("selection-hint").hidden = holdem;
+  document.getElementById("ronda-actions").hidden = holdem;
+  document.getElementById("holdem-actions").hidden = !holdem;
   document.getElementById("play-cards").disabled = game.finished || game.turnId !== socket.id || !selectedCards.size;
   document.getElementById("pass-turn").disabled = game.finished || game.turnId !== socket.id || !game.trick;
+  const canAct = holdem && !game.finished && game.turnId === socket.id;
+  const due = Math.max(0, (game.currentBet || 0) - (myState?.roundBet || 0));
+  document.getElementById("holdem-fold").disabled = !canAct;
+  document.getElementById("holdem-check-call").disabled =
+    !canAct || (due > 0 && due >= (myState?.stack || 0));
+  document.getElementById("holdem-check-call").textContent = due ? `Call ${due.toLocaleString("id-ID")}` : "Check";
+  const raiseInput = document.getElementById("holdem-raise-amount");
+  if (document.activeElement !== raiseInput) {
+    raiseInput.min = String((game.currentBet || 0) + (game.minRaise || 2000));
+    raiseInput.value = raiseInput.min;
+  }
+  const maxRaise = (myState?.roundBet || 0) + (myState?.stack || 0) - 1;
+  raiseInput.max = String(maxRaise);
+  document.getElementById("holdem-raise").disabled =
+    !canAct || maxRaise < (game.currentBet || 0) + (game.minRaise || 2000);
 }
 
 function renderHand(hand, disabled) {

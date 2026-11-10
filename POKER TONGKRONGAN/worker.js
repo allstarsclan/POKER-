@@ -85,6 +85,9 @@ export class GameHub {
         case "passTurn":
           await this.passTurn(socket);
           break;
+        case "holdemAction":
+          await this.holdemAction(socket, payload);
+          break;
         case "leaveRoom":
           await this.leave(socket);
           break;
@@ -124,6 +127,7 @@ export class GameHub {
       .filter((room) => !room.privateRoom && !room.game)
       .map((room) => ({
         code: room.code,
+        mode: room.mode,
         players: room.players.filter((player) => !player.bot).length,
         seats: room.players.length,
         status: "waiting",
@@ -147,24 +151,42 @@ export class GameHub {
     return {
       code: room.code,
       privateRoom: room.privateRoom,
+      mode: room.mode,
       hostId: room.hostId,
       players: room.players.map((player) => ({
         id: player.id,
         name: player.name,
         bot: player.bot,
         connected: player.connected,
-        hand: room.game && player.id === viewerId ? player.hand : [],
+        hand: room.game && (player.id === viewerId ||
+          (room.game.mode === "holdem" && room.game.finished && !player.folded)) ? player.hand : [],
         cardCount: room.game ? player.hand.length : 0,
       })),
       game: room.game && {
+        mode: room.game.mode,
         turnId: room.game.turnId,
-        opening: room.game.opening,
+        openingCards: room.game.openingCards,
+        twoLowInStraight: room.game.twoLowInStraight,
         trick: room.game.trick,
         passed: room.game.passed,
         finished: room.game.finished,
         winnerId: room.game.winnerId,
+        winnerIds: room.game.winnerIds,
         loserId: room.game.loserId,
+        winningHand: room.game.winningHand,
+        stage: room.game.stage,
+        board: room.game.board,
+        pot: room.game.pot,
+        currentBet: room.game.currentBet,
+        minRaise: room.game.minRaise,
+        lastPot: room.game.lastPot,
       },
+      playerStates: room.players.map((player) => ({
+        id: player.id,
+        stack: player.stack ?? null,
+        roundBet: player.roundBet ?? 0,
+        folded: player.folded ?? false,
+      })),
     };
   }
 
@@ -197,26 +219,27 @@ export class GameHub {
     return this.sendRoom(room);
   }
 
-  newRoom(privateRoom) {
+  newRoom(privateRoom, mode = "ronda") {
     let code;
     do {
       code = crypto.randomUUID().slice(0, 6).toUpperCase();
     } while (this.rooms[code]);
-    const room = { code, privateRoom, hostId: null, players: [], game: null };
+    const room = { code, privateRoom, mode: mode === "holdem" ? "holdem" : "ronda", hostId: null, players: [], game: null };
     this.rooms[code] = room;
     return room;
   }
 
   async createRoom(socket, payload) {
-    const room = this.newRoom(Boolean(payload.privateRoom));
+    const room = this.newRoom(Boolean(payload.privateRoom), payload.mode);
     await this.attachPlayer(socket, room, payload.name);
   }
 
   async joinPublic(socket, payload) {
+    const mode = payload.mode === "holdem" ? "holdem" : "ronda";
     let room = Object.values(this.rooms).find((candidate) =>
-      !candidate.privateRoom && !candidate.game && candidate.players.length < 4
+      !candidate.privateRoom && candidate.mode === mode && !candidate.game && candidate.players.length < 4
     );
-    if (!room) room = this.newRoom(false);
+    if (!room) room = this.newRoom(false, mode);
     await this.attachPlayer(socket, room, payload.name);
   }
 
@@ -258,21 +281,36 @@ export class GameHub {
     if (!room || room.hostId !== playerId || room.game) return this.fail(socket, "Hanya host yang bisa memulai game.");
     if (room.players.length !== 4) return this.fail(socket, "Isi 4 kursi dulu. Tambah bot atau undang teman.");
 
+    if (room.mode === "holdem") {
+      this.startHoldem(room);
+      this.runBots(room);
+      await this.sendRoom(room);
+      return;
+    }
+
     const deck = this.shuffle(this.makeDeck());
     room.players.forEach((player, index) => {
       player.hand = deck.slice(index * 13, (index + 1) * 13).sort((a, b) => this.cardValue(a) - this.cardValue(b));
     });
     const starter = room.players.find((player) => player.hand.some((card) => card.rank === 3 && card.suit === "S"));
+    const openingCards = [];
+    for (const player of room.players) {
+      openingCards.push(...player.hand.filter((card) => card.rank === 3));
+      player.hand = player.hand.filter((card) => card.rank !== 3);
+    }
     room.game = {
       turnId: starter.id,
-      opening: true,
+      openingCards: openingCards.sort((a, b) => this.cardValue(a) - this.cardValue(b)),
       trick: null,
       passed: [],
       finished: false,
       winnerId: null,
       loserId: null,
       passCount: 0,
+      pokerPlayed: false,
+      twoLowInStraight: false,
     };
+    await this.sendRoom(room);
     this.runBots(room);
     await this.sendRoom(room);
   }
@@ -283,17 +321,14 @@ export class GameHub {
     const game = room?.game;
     const player = room?.players.find((member) => member.id === playerId);
     if (!game || game.finished || !player || game.turnId !== player.id) return this.fail(socket, "Belum giliranmu.");
-    if (!Array.isArray(cardIds) || cardIds.length < 1 || cardIds.length > 5) {
+    if (!Array.isArray(cardIds) || cardIds.length < 1 || cardIds.length > 13) {
       return this.fail(socket, "Pilih kombinasi kartu yang valid.");
     }
     const selected = cardIds.map((id) => player.hand.find((card) => this.cardId(card) === id));
     if (selected.some((card) => !card)) return this.fail(socket, "Kartu yang dipilih tidak ada di tanganmu.");
-    const combo = this.classify(selected);
-    if (!combo) return this.fail(socket, "Kombinasi tidak valid. Coba single, pair, triss, polo, atau bomb.");
-    if (game.opening && !selected.some((card) => card.rank === 3 && card.suit === "S")) {
-      return this.fail(socket, "Pembuka game harus membawa kartu 3♠.");
-    }
-    if (game.trick && !this.beats(combo, game.trick)) {
+    const combo = this.classify(selected, game.twoLowInStraight);
+    if (!combo) return this.fail(socket, "Kombinasi tidak valid. Coba single, pair, triss, polo, bomb, atau seri.");
+    if (game.trick && !this.beats(combo, game.trick, game.twoLowInStraight)) {
       return this.fail(socket, "Kombinasi ini tidak bisa mengalahkan kartu di meja.");
     }
     this.applyPlay(room, player, selected, combo);
@@ -321,6 +356,225 @@ export class GameHub {
     }
     this.runBots(room);
     await this.sendRoom(room);
+  }
+
+  async holdemAction(socket, payload) {
+    const playerId = socket.deserializeAttachment()?.playerId;
+    const room = this.roomForPlayer(playerId);
+    const game = room?.game;
+    const player = room?.players.find((member) => member.id === playerId);
+    if (!game || game.mode !== "holdem" || game.finished || !player || game.turnId !== player.id) {
+      return this.fail(socket, "Belum giliranmu.");
+    }
+
+    const error = this.applyHoldemAction(room, player, payload.action, Number(payload.amount));
+    if (error) return this.fail(socket, error);
+    this.progressHoldem(room);
+    this.runBots(room);
+    await this.sendRoom(room);
+  }
+
+  applyHoldemAction(room, player, action, amount) {
+    const game = room.game;
+    if (action === "fold") {
+      player.folded = true;
+    } else if (action === "checkCall") {
+      const due = game.currentBet - player.roundBet;
+      if (due >= player.stack && due > 0) return "Chip tidak cukup untuk call tanpa all-in; pilih fold.";
+      player.stack -= due;
+      player.roundBet += due;
+      player.totalBet += due;
+      game.pot += due;
+    } else if (action === "raise") {
+      const increase = amount - game.currentBet;
+      const due = amount - player.roundBet;
+      if (!Number.isSafeInteger(amount) || increase < game.minRaise) {
+        return `Raise minimal ${game.minRaise} chip di atas taruhan saat ini.`;
+      }
+      if (due >= player.stack) return "Raise all-in belum didukung. Pilih jumlah yang lebih kecil.";
+      player.stack -= due;
+      player.roundBet = amount;
+      player.totalBet += due;
+      game.pot += due;
+      game.currentBet = amount;
+      game.minRaise = increase;
+      game.acted = [player.id];
+    } else {
+      return "Aksi Texas Hold’em tidak dikenal.";
+    }
+
+    if (action !== "raise") game.acted.push(player.id);
+    return null;
+  }
+
+  startHoldem(room) {
+    const deck = this.shuffle(Array.from({ length: 13 }, (_, index) => index + 2)
+      .flatMap((rank) => SUITS.map((suit) => ({ rank, suit }))));
+    for (const player of room.players) {
+      player.hand = [deck.pop(), deck.pop()];
+      player.stack = 100000;
+      player.roundBet = 0;
+      player.totalBet = 0;
+      player.folded = false;
+    }
+
+    const dealerIndex = 0;
+    const smallBlind = room.players[(dealerIndex + 1) % 4];
+    const bigBlind = room.players[(dealerIndex + 2) % 4];
+    smallBlind.stack -= 1000;
+    smallBlind.roundBet = 1000;
+    smallBlind.totalBet = 1000;
+    bigBlind.stack -= 2000;
+    bigBlind.roundBet = 2000;
+    bigBlind.totalBet = 2000;
+
+    room.game = {
+      mode: "holdem",
+      stage: "preflop",
+      board: [],
+      pot: 3000,
+      currentBet: 2000,
+      minRaise: 2000,
+      dealerIndex,
+      acted: [],
+      botRaised: [],
+      deck,
+      turnId: room.players[(dealerIndex + 3) % 4].id,
+      finished: false,
+      winnerId: null,
+      winningHand: null,
+    };
+  }
+
+  activeHoldemPlayers(room) {
+    return room.players.filter((player) => !player.folded);
+  }
+
+  nextHoldemPlayer(room, currentId) {
+    const currentIndex = room.players.findIndex((player) => player.id === currentId);
+    for (let step = 1; step <= room.players.length; step += 1) {
+      const player = room.players[(currentIndex + step) % room.players.length];
+      if (!player.folded) return player;
+    }
+    return room.players[currentIndex];
+  }
+
+  progressHoldem(room) {
+    const game = room.game;
+    const active = this.activeHoldemPlayers(room);
+    if (active.length === 1) {
+      this.awardHoldemPot(room, [active[0]], "Menang karena semua lawan fold");
+      return;
+    }
+
+    const roundComplete = active.every((player) =>
+      game.acted.includes(player.id) && player.roundBet === game.currentBet
+    );
+    if (roundComplete) {
+      if (game.stage === "river") {
+        this.showdownHoldem(room);
+        return;
+      }
+      if (game.stage === "preflop") {
+        game.board.push(game.deck.pop(), game.deck.pop(), game.deck.pop());
+        game.stage = "flop";
+      } else {
+        game.board.push(game.deck.pop());
+        game.stage = game.stage === "flop" ? "turn" : "river";
+      }
+      game.currentBet = 0;
+      game.minRaise = 2000;
+      game.acted = [];
+      game.botRaised = [];
+      for (const player of room.players) player.roundBet = 0;
+      game.turnId = this.nextHoldemPlayer(room, room.players[game.dealerIndex].id).id;
+      this.progressHoldem(room);
+      return;
+    }
+
+    game.turnId = this.nextHoldemPlayer(room, game.turnId).id;
+  }
+
+  awardHoldemPot(room, winners, winningHand) {
+    const game = room.game;
+    game.lastPot = game.pot;
+    const share = Math.floor(game.pot / winners.length);
+    let remainder = game.pot - share * winners.length;
+    for (const winner of winners) {
+      winner.stack += share + (remainder > 0 ? 1 : 0);
+      if (remainder > 0) remainder -= 1;
+    }
+    game.finished = true;
+    game.stage = "showdown";
+    game.winnerId = winners[0].id;
+    game.winnerIds = winners.map((winner) => winner.id);
+    game.winningHand = winningHand;
+    game.pot = 0;
+  }
+
+  showdownHoldem(room) {
+    const scored = this.activeHoldemPlayers(room).map((player) => ({
+      player,
+      score: this.bestHoldemHand([...player.hand, ...room.game.board]),
+    }));
+    scored.sort((a, b) => this.compareScores(b.score, a.score));
+    const winners = scored.filter((entry) => this.compareScores(entry.score, scored[0].score) === 0);
+    this.awardHoldemPot(room, winners.map((entry) => entry.player), scored[0].score.name);
+  }
+
+  bestHoldemHand(cards) {
+    let best = null;
+    for (let a = 0; a < cards.length - 4; a += 1) {
+      for (let b = a + 1; b < cards.length - 3; b += 1) {
+        for (let c = b + 1; c < cards.length - 2; c += 1) {
+          for (let d = c + 1; d < cards.length - 1; d += 1) {
+            for (let e = d + 1; e < cards.length; e += 1) {
+              const score = this.scoreFiveCards([cards[a], cards[b], cards[c], cards[d], cards[e]]);
+              if (!best || this.compareScores(score, best) > 0) best = score;
+            }
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  scoreFiveCards(cards) {
+    const ranks = cards.map((card) => card.rank).sort((a, b) => b - a);
+    const counts = new Map();
+    for (const rank of ranks) counts.set(rank, (counts.get(rank) || 0) + 1);
+    const groups = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+    const flush = cards.every((card) => card.suit === cards[0].suit);
+    const distinct = [...new Set(ranks)];
+    let straightHigh = distinct[0];
+    if (distinct[0] - distinct[4] !== 4 || distinct.length !== 5) {
+      straightHigh = distinct.join(",") === "14,5,4,3,2" ? 5 : 0;
+    }
+
+    if (flush && straightHigh) return { rank: [8, straightHigh], name: "Straight flush" };
+    if (groups[0][1] === 4) return { rank: [7, groups[0][0], groups[1][0]], name: "Four of a kind" };
+    if (groups[0][1] === 3 && groups[1][1] === 2) {
+      return { rank: [6, groups[0][0], groups[1][0]], name: "Full house" };
+    }
+    if (flush) return { rank: [5, ...ranks], name: "Flush" };
+    if (straightHigh) return { rank: [4, straightHigh], name: "Straight" };
+    if (groups[0][1] === 3) {
+      return { rank: [3, groups[0][0], ...groups.slice(1).map((group) => group[0])], name: "Three of a kind" };
+    }
+    if (groups[0][1] === 2 && groups[1][1] === 2) {
+      return { rank: [2, groups[0][0], groups[1][0], groups[2][0]], name: "Two pair" };
+    }
+    if (groups[0][1] === 2) {
+      return { rank: [1, groups[0][0], ...groups.slice(1).map((group) => group[0])], name: "Pair" };
+    }
+    return { rank: [0, ...ranks], name: "High card" };
+  }
+
+  compareScores(a, b) {
+    for (let index = 0; index < Math.max(a.rank.length, b.rank.length); index += 1) {
+      if ((a.rank[index] || 0) !== (b.rank[index] || 0)) return (a.rank[index] || 0) - (b.rank[index] || 0);
+    }
+    return 0;
   }
 
   async leave(socket, disconnected = false) {
@@ -361,13 +615,17 @@ export class GameHub {
   applyPlay(room, player, cards, combo) {
     const game = room.game;
     const previous = game.trick;
+    if (combo.type === "bomb" && !game.pokerPlayed && !cards.some((card) => card.rank === 15)) {
+      game.twoLowInStraight = true;
+    }
+    if (cards.some((card) => card.rank === 15)) game.pokerPlayed = true;
     player.hand = player.hand.filter((card) => !cards.some((played) => this.cardId(played) === this.cardId(card)));
     const bombedTwo = previous && previous.type === "single" &&
       previous.cards[0].rank === 15 && combo.type === "bomb";
     game.trick = { playerId: player.id, type: combo.type, cards };
     game.passed = [];
     game.passCount = 0;
-    game.opening = false;
+    game.openingCards = null;
     if (bombedTwo) {
       game.finished = true;
       game.winnerId = player.id;
@@ -381,19 +639,21 @@ export class GameHub {
   }
 
   runBots(room) {
+    if (room.game?.mode === "holdem") {
+      this.runHoldemBots(room);
+      return;
+    }
     const game = room.game;
     let moves = 0;
     while (game && !game.finished && moves < 60) {
       const player = room.players.find((member) => member.id === game.turnId);
       if (!player?.bot) return;
       const previous = game.trick;
-      const options = this.allCombos(player.hand).filter(({ combo }) => {
-        if (game.opening && !combo.cards.some((card) => card.rank === 3 && card.suit === "S")) return false;
-        return !previous || this.beats(combo, previous);
-      });
+      const options = this.allCombos(player.hand, game.twoLowInStraight)
+        .filter(({ combo }) => !previous || this.beats(combo, previous, game.twoLowInStraight));
       options.sort((a, b) => {
-        const first = this.strength(a.combo);
-        const second = this.strength(b.combo);
+        const first = this.strength(a.combo, game.twoLowInStraight);
+        const second = this.strength(b.combo, game.twoLowInStraight);
         for (let i = 0; i < Math.max(first.length, second.length); i += 1) {
           if ((first[i] || 0) !== (second[i] || 0)) return (first[i] || 0) - (second[i] || 0);
         }
@@ -418,6 +678,32 @@ export class GameHub {
     }
   }
 
+  runHoldemBots(room) {
+    const game = room.game;
+    let actions = 0;
+    while (game && !game.finished && actions < 60) {
+      const player = room.players.find((member) => member.id === game.turnId);
+      if (!player?.bot) return;
+
+      const due = game.currentBet - player.roundBet;
+      let action = "checkCall";
+      let amount = 0;
+      if ((due >= player.stack && due > 0) || (due > 0 && Math.random() < 0.14)) {
+        action = "fold";
+      } else if (due === 0 && !game.botRaised.includes(player.id) && Math.random() < 0.08 &&
+        player.stack >= game.currentBet + game.minRaise - player.roundBet) {
+        action = "raise";
+        amount = game.currentBet + game.minRaise;
+      }
+
+      const error = this.applyHoldemAction(room, player, action, amount);
+      if (error) this.applyHoldemAction(room, player, "checkCall", 0);
+      if (action === "raise" && !error) game.botRaised.push(player.id);
+      this.progressHoldem(room);
+      actions += 1;
+    }
+  }
+
   nextPlayer(room, currentId, skipPassed) {
     const index = room.players.findIndex((player) => player.id === currentId);
     for (let step = 1; step <= room.players.length; step += 1) {
@@ -429,7 +715,7 @@ export class GameHub {
     return room.players[index];
   }
 
-  allCombos(hand) {
+  allCombos(hand, twoLowInStraight) {
     const result = [];
     for (let i = 0; i < hand.length; i += 1) {
       result.push([hand[i]]);
@@ -456,12 +742,46 @@ export class GameHub {
         }
       }
     }
-    return result.map((cards) => ({ cards, combo: this.classify(cards) })).filter((item) => item.combo);
+    const cardsBySuitAndRank = new Map();
+    for (const card of hand) {
+      if (!cardsBySuitAndRank.has(card.suit)) cardsBySuitAndRank.set(card.suit, new Map());
+      cardsBySuitAndRank.get(card.suit).set(card.rank, card);
+    }
+    const runOrder = this.straightOrder(twoLowInStraight);
+    for (const suitCards of cardsBySuitAndRank.values()) {
+      for (let start = 0; start < runOrder.length; start += 1) {
+        const run = [];
+        for (let end = start; end < runOrder.length; end += 1) {
+          const card = suitCards.get(runOrder[end]);
+          if (!card) break;
+          run.push(card);
+          if (run.length >= 3) result.push([...run]);
+        }
+      }
+    }
+    return result.map((cards) => ({ cards, combo: this.classify(cards, twoLowInStraight) }))
+      .filter((item) => item.combo);
   }
 
-  classify(cards) {
-    if (![1, 2, 3, 4, 5].includes(cards.length)) return null;
+  straightOrder(twoLowInStraight) {
+    return twoLowInStraight ? [15, ...RANKS.filter((rank) => rank !== 15)] : RANKS.filter((rank) => rank !== 15);
+  }
+
+  classify(cards, twoLowInStraight = false) {
+    if (!Array.isArray(cards) || cards.length < 1 || cards.length > 13) return null;
     if (new Set(cards.map((card) => this.cardId(card))).size !== cards.length) return null;
+    if (cards.length >= 3 && new Set(cards.map((card) => card.suit)).size === 1) {
+      const runOrder = this.straightOrder(twoLowInStraight);
+      const sortedRanks = cards.map((card) => card.rank)
+        .sort((a, b) => runOrder.indexOf(a) - runOrder.indexOf(b));
+      const start = runOrder.indexOf(sortedRanks[0]);
+      if (start >= 0 && sortedRanks.every((rank, index) => runOrder[start + index] === rank)) {
+        return { type: "straight", cards: [...cards].sort((a, b) =>
+          runOrder.indexOf(a.rank) - runOrder.indexOf(b.rank)
+        ) };
+      }
+    }
+    if (![1, 2, 3, 4, 5].includes(cards.length)) return null;
     const counts = new Map();
     for (const card of cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
     const groups = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
@@ -474,11 +794,16 @@ export class GameHub {
     return null;
   }
 
-  strength(combo) {
+  strength(combo, twoLowInStraight = false) {
     const counts = new Map();
     for (const card of combo.cards) counts.set(card.rank, (counts.get(card.rank) || 0) + 1);
     const groups = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
     const highestCard = Math.max(...combo.cards.map((card) => this.cardValue(card)));
+    if (combo.type === "straight") {
+      const topCard = combo.cards[combo.cards.length - 1];
+      const topRank = topCard.rank === 15 && twoLowInStraight ? 2 : topCard.rank;
+      return [topRank, this.cardValue(topCard)];
+    }
     if (combo.type === "single") return [combo.cards[0].rank, highestCard];
     if (combo.type === "pair" || combo.type === "triple" || combo.type === "bomb") {
       return [groups[0][0], highestCard];
@@ -487,11 +812,12 @@ export class GameHub {
     return [];
   }
 
-  beats(candidate, previous) {
+  beats(candidate, previous, twoLowInStraight = false) {
     if (previous.type === "single" && previous.cards[0].rank === 15 && candidate.type === "bomb") return true;
     if (candidate.type !== previous.type) return false;
-    const a = this.strength(candidate);
-    const b = this.strength(previous);
+    if (candidate.type === "straight" && candidate.cards.length !== previous.cards.length) return false;
+    const a = this.strength(candidate, twoLowInStraight);
+    const b = this.strength(previous, twoLowInStraight);
     for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
       if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
     }
